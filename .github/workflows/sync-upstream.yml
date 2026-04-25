@@ -1,0 +1,41 @@
+name: Sync upstream
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch upstream container/
+        run: |
+          git remote add upstream https://github.com/searxng/searxng.git
+          git fetch upstream master --filter=blob:none
+          git archive upstream/master container/ | tar -x --strip-components=1
+
+      - name: Open PR if changed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "No upstream changes."
+            exit 0
+          fi
+
+          BRANCH="sync-upstream-$(date +%Y%m%d%H%M%S)"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add .
+          git commit -m "chore: sync upstream container/"
+          git push origin "$BRANCH"
+          gh pr create \
+            --title "chore: sync upstream container/" \
+            --body "Automated sync from [searxng/searxng container/](https://github.com/searxng/searxng/tree/master/container). Review before merging — your custom config in \`core-config/\` and \`.env\` are not touched." \
+            --base master \
+            --head "$BRANCH"
